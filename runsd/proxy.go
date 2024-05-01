@@ -18,7 +18,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -44,8 +44,10 @@ func newReverseProxy(projectHash, currentRegion, internalDomain string) *reverse
 	}
 }
 
+type ctxKeyEarlyResponseType string
+
 const (
-	ctxKeyEarlyResponse = `early-response`
+	ctxKeyEarlyResponse ctxKeyEarlyResponseType = `early-response`
 )
 
 func (rp *reverseProxy) newReverseProxyHandler(tr http.RoundTripper) http.Handler {
@@ -70,7 +72,7 @@ func (rp *reverseProxy) newReverseProxyHandler(tr http.RoundTripper) http.Handle
 				resp := &http.Response{
 					Request:    req,
 					StatusCode: http.StatusInternalServerError,
-					Body: ioutil.NopCloser(bytes.NewReader([]byte(
+					Body: io.NopCloser(bytes.NewReader([]byte(
 						fmt.Sprintf("runsd doesn't know how to handle host=%q: %v", req.Host, err)))),
 				}
 				newReq := req.WithContext(context.WithValue(req.Context(), ctxKeyEarlyResponse, resp))
