@@ -26,9 +26,11 @@ the official feature becomes available.
 <!-- toc -->
 
 - [Features](#features)
-  * [DNS Service Discovery](#dns-service-discovery)
-  * [Automatic Service Authentication](#automatic-service-authentication)
+  - [DNS Service Discovery](#dns-service-discovery)
+  - [Automatic Service Authentication](#automatic-service-authentication)
+    - [X-Serverless-Authorization](#x-serverless-authorization)
 - [Installation](#installation)
+- [Usage](#usage)
 - [Quickstart](#quickstart)
 - [Architecture](#architecture)
 - [Troubleshooting](#troubleshooting)
@@ -69,6 +71,10 @@ your apps to Cloud Run from other platforms that have name-based DNS resolution
 (such as like Kubernetes or Compute Engine):
 
 ![Cloud Run authentication before & after](assets/img/auth_code.png)
+
+#### X-Serverless-Authorization
+
+If the `Authorization` header is already populated, this version of `runsd` instead puts the identity token into the `X-Serverless-Authorization` header. For more details, see Point 2 in the [documentation](https://cloud.google.com/run/docs/authenticating/service-to-service#acquire-token) for acquiring and configuring the ID token.
 
 ## Installation
 
@@ -117,7 +123,7 @@ Note that:
 ## Quickstart
 
 You can deploy [this](./example) sample application to Cloud Run to try out
-querying other **private** Cloud Run services  **without tokens** and **without
+querying other **private** Cloud Run services **without tokens** and **without
 full `.run.app` domains** by directly using curl.
 
 This sample app [has](./example/Dockerfile) `runsd` as its entrypoint and it
@@ -174,7 +180,7 @@ resolved. Patch and more tests are always welcome.
 
 ## Limitations and Known Issues
 
-1. All names like `http://NAME` will resolve to a Cloud Run URL even  if they
+1. All names like `http://NAME` will resolve to a Cloud Run URL even if they
    don't exist. Therefore, for example, if `http://hello` doesn't exist, it will
    will still be routed to a URL as if it existed, and it will get HTTP 404.
 1. Similar to previous item `http://metadata` will be assumed as a Cloud Run
@@ -187,6 +193,6 @@ resolved. Patch and more tests are always welcome.
 1. WebSockets, gRPC (incl. streaming) and SSE works. Please file issues if it
    does not work.
 
------
+---
 
 This is not an official Google project.

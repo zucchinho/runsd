@@ -16,7 +16,7 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -45,12 +45,15 @@ func (a authenticatingTransport) RoundTrip(req *http.Request) (*http.Response, e
 	if err != nil {
 		klog.V(1).Infof("WARN: failed to get ID token for host=%s: %v", req.Host, err)
 		r := new(http.Response)
-		r.Body = ioutil.NopCloser(strings.NewReader(fmt.Sprintf("failed to fetch metadata token: %v", err)))
+		r.Body = io.NopCloser(strings.NewReader(fmt.Sprintf("failed to fetch metadata token: %v", err)))
 		r.StatusCode = http.StatusInternalServerError
 		return r, nil
 	}
 	if req.Header.Get("authorization") == "" {
 		req.Header.Set("authorization", "Bearer "+idToken)
+	} else {
+		// If the request is already using the `Authorization` header, we should use the `X-Serverless-Authorization` header
+		req.Header.Set("x-serverless-authorization", "Bearer "+idToken)
 	}
 	ua := req.Header.Get("user-agent")
 	req.Header.Set("user-agent", fmt.Sprintf("runsd version=%s", version))
