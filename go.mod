@@ -11,6 +11,6 @@ require (
 
 require (
 	github.com/go-logr/logr v0.4.0 // indirect
-	golang.org/x/sys v0.0.0-20210503173754-0981d6026fa6 // indirect
+	golang.org/x/sys v0.1.0 // indirect
 	golang.org/x/text v0.3.6 // indirect
 )
