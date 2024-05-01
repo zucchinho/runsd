@@ -174,14 +174,12 @@ func nxdomain(w dns.ResponseWriter, msg *dns.Msg) {
 	r.Authoritative = true
 	r.Rcode = dns.RcodeNameError
 	w.WriteMsg(r)
-	return
 }
 
-//  servfail an authoritative SERVFAIL (error) reply
+// servfail an authoritative SERVFAIL (error) reply
 func servfail(w dns.ResponseWriter, msg *dns.Msg) {
 	r := new(dns.Msg)
 	r.SetReply(msg)
 	r.Rcode = dns.RcodeServerFailure
 	w.WriteMsg(r)
-	return
 }
