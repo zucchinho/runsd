@@ -84,12 +84,49 @@ If the `Authorization` header is already populated, this version of `runsd` inst
 > https://forms.gle/kCgEEiRqrmHhM65g6 if you are using `runsd`.
 > Your feedback will be important in shaping this feature.
 
-To install `runsd` in your container, you need to download its binary and prefix
-your original entrypoint with it.
+To install `runsd` in your container, you need its binary, and to prefix your
+original entrypoint with it. There are two ways to get the binary.
 
-For example:
+### Option 1: container image (recommended)
 
-```text
+Each release is also published as an image, `ghcr.io/zucchinho/runsd`, tagged
+with the full version (`<MAJOR>.<MINOR>.<PATCH>`) and with `<MAJOR>.<MINOR>`,
+which moves to each new patch release. The image only contains the binary, at
+`/runsd`.
+
+```Dockerfile
+FROM ghcr.io/zucchinho/runsd:<MAJOR>.<MINOR>@sha256:<DIGEST> AS runsd
+
+FROM <your base image>
+COPY --from=runsd /runsd /bin/runsd
+ENTRYPOINT ["runsd", "--", "/app"]
+```
+
+Pin the digest (`docker buildx imagetools inspect ghcr.io/zucchinho/runsd:<MAJOR>.<MINOR>`
+prints it). The binary is then fixed by its content hash, and the
+[Releases page](https://github.com/zucchinho/runsd/releases) lists the versions.
+
+Dependabot's `docker` ecosystem recognises the `FROM` line (which is why the
+image is pulled in its own stage, not with `COPY --from=ghcr.io/...`). It bumps
+the digest as new patch releases move the `<MAJOR>.<MINOR>` tag. To stop it
+proposing new minor or major versions:
+
+```yaml
+updates:
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: ghcr.io/zucchinho/runsd
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-major
+```
+
+### Option 2: download the binary
+
+```Dockerfile
 ADD --checksum=sha256:<SHA256> https://github.com/zucchinho/runsd/releases/download/<VERSION>/runsd /bin/runsd
 RUN chmod +x /bin/runsd
 ENTRYPOINT ["runsd", "--", "/app"]
@@ -101,7 +138,16 @@ and use it as long as you can until you hit a bug.
 
 Replace `<SHA256>` with the digest listed in `checksums.txt` on the same
 release. `ADD --checksum` fails the build if the downloaded binary does not
-match (it needs BuildKit, the default builder in current Docker).
+match (it needs BuildKit, the default builder in current Docker). Nothing
+updates the version or the checksum for you with this option.
+
+### After installing
+
+After installing `runsd`, it will have no effect while running locally. However,
+while on Cloud Run, you can now query other services by name over `http://`.
+
+Note that your traffic is still secure –as the request is upgraded to HTTPS
+before it leaves your container.
 
 ### Verifying a release
 
@@ -119,14 +165,16 @@ sha256sum -c checksums.txt          # on macOS: shasum -a 256 -c checksums.txt
 gh attestation verify runsd --repo zucchinho/runsd
 ```
 
+To check the image instead, pin it by digest and verify its attestation (the
+pin alone proves the content is unchanged, not who built it):
+
+```sh
+gh attestation verify oci://ghcr.io/zucchinho/runsd@sha256:<DIGEST> --repo zucchinho/runsd
+```
+
 Releases before the first one with a `checksums.txt` (up to `v0.1.1`) have no
-checksum or attestation.
-
-After installing `runsd`, it will have no effect while running locally. However,
-while on Cloud Run, you can now query other services by name over `http://`.
-
-Note that your traffic is still secure –as the request is upgraded to HTTPS
-before it leaves your container.
+checksum or attestation, and there are no images before the first release that
+publishes one.
 
 ## Usage
 
