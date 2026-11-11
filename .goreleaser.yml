@@ -12,9 +12,10 @@ builds:
   goarch:
     - amd64
 archives:
-- format: binary
+- formats: [binary]
   name_template: "{{ .ProjectName }}"
 checksum:
-  disable: true
+  name_template: checksums.txt
+  algorithm: sha256
 changelog:
   disable: true
