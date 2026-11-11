@@ -1,22 +1,57 @@
 name: Release
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    branches:
+      - master
+concurrency:
+  group: release
+  cancel-in-progress: false
+permissions:
+  contents: read
 jobs:
-  goreleaser:
+  tag:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      published: ${{ steps.semrel.outputs.new_release_published }}
+      version: ${{ steps.semrel.outputs.new_release_version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@master
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Semantic release
+        id: semrel
+        uses: cycjimmy/semantic-release-action@ad51787758d9654d5a75150a89a6fa9b3ccef95e # v8.1.4
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  # Tags pushed with GITHUB_TOKEN don't trigger other workflows, so the build
+  # runs here, against the tag, rather than in a separate tag-triggered workflow.
+  goreleaser:
+    needs: tag
+    if: needs.tag.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: v${{ needs.tag.outputs.version }}
+          fetch-depth: 0
       - name: Setup Go
-        uses: actions/setup-go@v1
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: 1.21
+          go-version: "1.27"
+          check-latest: true
+      - name: Govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
       - name: GoReleaser
-        uses: goreleaser/goreleaser-action@v1
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
-          version: latest
-          args: release --rm-dist
+          version: "~> v2"
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
