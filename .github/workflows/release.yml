@@ -38,7 +38,6 @@ jobs:
       contents: write
       id-token: write
       attestations: write
-      packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -69,16 +68,37 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: dist/checksums.txt
-      # Publish the binary as an image so Dependabot's docker ecosystem can
-      # track it: X.Y.Z, and X.Y which moves with each patch release.
-      - name: Stage image context
+  # Publishes the exact released binary as an image so Dependabot's docker
+  # ecosystem can track it: X.Y.Z, and X.Y which moves with each patch release.
+  # Kept separate so only this job holds packages: write.
+  image:
+    needs: [tag, goreleaser]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      packages: write
+    env:
+      VERSION: ${{ needs.tag.outputs.version }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: v${{ needs.tag.outputs.version }}
+          persist-credentials: false
+      # The release is immutable, so these are the bytes users download.
+      - name: Download and verify release binary
         run: |
-          mkdir -p dist/docker
-          cp dist/runsd_linux_amd64_v1/runsd dist/docker/runsd
+          mkdir -p dist
+          gh release download "v${VERSION}" --repo "$GITHUB_REPOSITORY" --dir dist --pattern runsd --pattern checksums.txt
+          (cd dist && sha256sum -c checksums.txt)
+          gh attestation verify dist/runsd --repo "$GITHUB_REPOSITORY"
+          # release downloads lose the executable bit
+          chmod +x dist/runsd
       - name: Compute image tags
         id: tags
-        env:
-          VERSION: ${{ needs.tag.outputs.version }}
         run: |
           echo "tags=ghcr.io/zucchinho/runsd:${VERSION},ghcr.io/zucchinho/runsd:${VERSION%.*}" >> "$GITHUB_OUTPUT"
       - name: Setup Buildx
@@ -93,7 +113,7 @@ jobs:
         id: image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: dist/docker
+          context: dist
           file: Dockerfile
           push: true
           provenance: false
