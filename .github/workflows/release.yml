@@ -1,13 +1,18 @@
 name: Release
+# Pushes to master release. Pull requests run the same jobs as a dry run (see
+# DRY_RUN): build, snapshot and smoke-test the image, publish nothing.
 on:
   push:
     branches:
       - master
+  pull_request:
 concurrency:
-  group: release
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'push' && 'release' || format('release-dry-run-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 permissions:
   contents: read
+env:
+  DRY_RUN: ${{ github.event_name != 'push' }}
 jobs:
   tag:
     runs-on: ubuntu-24.04
@@ -23,8 +28,11 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      # semantic-release does nothing on pull_request events, so there is no
+      # version or notes to dry-run; the squash-merge title decides the version.
       - name: Semantic release
         id: semrel
+        if: env.DRY_RUN != 'true'
         uses: cycjimmy/semantic-release-action@ad51787758d9654d5a75150a89a6fa9b3ccef95e # v8.1.4
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -32,7 +40,7 @@ jobs:
   # runs here, against the tag, rather than in a separate tag-triggered workflow.
   goreleaser:
     needs: tag
-    if: needs.tag.outputs.published == 'true'
+    if: github.event_name != 'push' || needs.tag.outputs.published == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -42,7 +50,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: v${{ needs.tag.outputs.version }}
+          ref: ${{ needs.tag.outputs.published == 'true' && format('v{0}', needs.tag.outputs.version) || '' }}
           fetch-depth: 0
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -51,23 +59,46 @@ jobs:
           check-latest: true
       - name: Govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      # GoReleaser skips the step that loads --release-notes when
+      # changelog.disable is true, which published v0.1.2 with an empty body.
+      # A snapshot run skips that step too, so guard the config directly.
+      - name: Guard release notes config
+        run: |
+          if ! awk '/^changelog:/{f=1;next} /^[^ ]/{f=0} f && /disable: *true/{bad=1} END{exit bad}' .goreleaser.yml; then
+            echo "::error file=.goreleaser.yml::changelog.disable: true makes --release-notes a no-op"
+            exit 1
+          fi
       # Release notes come from semantic-release; passed via env, not
       # interpolated into the script, as they derive from commit messages.
       - name: Write release notes
         env:
           NOTES: ${{ needs.tag.outputs.notes }}
-        run: printf '%s\n' "$NOTES" > "$RUNNER_TEMP/release-notes.md"
+        run: |
+          if [ "$DRY_RUN" = true ]; then NOTES="dry run"; fi
+          printf '%s\n' "$NOTES" > "$RUNNER_TEMP/release-notes.md"
       - name: GoReleaser
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           version: "~> v2"
-          args: release --clean --release-notes=${{ runner.temp }}/release-notes.md
+          args: release --clean --release-notes=${{ runner.temp }}/release-notes.md ${{ env.DRY_RUN == 'true' && '--snapshot --skip=publish' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify checksums
+        run: (cd dist/runsd_linux_amd64_v1 && sha256sum -c ../checksums.txt)
       - name: Attest build provenance
+        if: env.DRY_RUN != 'true'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: dist/checksums.txt
+      # A dry run has no release to download, so hand the snapshot binary on.
+      - name: Upload snapshot binary
+        if: env.DRY_RUN == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: snapshot-binary
+          path: dist/runsd_linux_amd64_v1/runsd
+          retention-days: 1
+          if-no-files-found: error
   # Publishes the exact released binary as an image so Dependabot's docker
   # ecosystem can track it: X.Y.Z, and X.Y which moves with each patch release.
   # Kept separate so only this job holds packages: write.
@@ -86,24 +117,37 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: v${{ needs.tag.outputs.version }}
+          ref: ${{ needs.tag.outputs.published == 'true' && format('v{0}', needs.tag.outputs.version) || '' }}
           persist-credentials: false
       # The release is immutable, so these are the bytes users download.
       - name: Download and verify release binary
+        if: env.DRY_RUN != 'true'
         run: |
           mkdir -p dist
           gh release download "v${VERSION}" --repo "$GITHUB_REPOSITORY" --dir dist --pattern runsd --pattern checksums.txt
           (cd dist && sha256sum -c checksums.txt)
           gh attestation verify dist/runsd --repo "$GITHUB_REPOSITORY"
-          # release downloads lose the executable bit
-          chmod +x dist/runsd
+      - name: Download snapshot binary
+        if: env.DRY_RUN == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: snapshot-binary
+          path: dist
+      # artifacts and release downloads lose the executable bit
+      - name: Make binary executable
+        run: chmod +x dist/runsd
       - name: Compute image tags
         id: tags
         run: |
-          echo "tags=ghcr.io/zucchinho/runsd:${VERSION},ghcr.io/zucchinho/runsd:${VERSION%.*}" >> "$GITHUB_OUTPUT"
+          if [ "$DRY_RUN" = true ]; then
+            echo "tags=runsd:dry-run" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=ghcr.io/zucchinho/runsd:${VERSION},ghcr.io/zucchinho/runsd:${VERSION%.*}" >> "$GITHUB_OUTPUT"
+          fi
       - name: Setup Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Log in to GHCR
+        if: env.DRY_RUN != 'true'
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
@@ -115,11 +159,24 @@ jobs:
         with:
           context: dist
           file: Dockerfile
-          push: true
+          push: ${{ env.DRY_RUN != 'true' }}
+          load: ${{ env.DRY_RUN == 'true' }}
           provenance: false
           tags: ${{ steps.tags.outputs.tags }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+      # 126/127 mean the binary is not executable or not found; anything else,
+      # including a usage exit, is fine.
+      - name: Smoke test image
+        if: env.DRY_RUN == 'true'
+        run: |
+          rc=0
+          docker run --rm runsd:dry-run -h || rc=$?
+          if [ "$rc" -eq 126 ] || [ "$rc" -eq 127 ]; then
+            echo "::error::runsd is not executable in the image (exit $rc)"
+            exit 1
+          fi
       - name: Attest image provenance
+        if: env.DRY_RUN != 'true'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ghcr.io/zucchinho/runsd
