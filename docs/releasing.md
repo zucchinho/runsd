@@ -60,6 +60,20 @@ edited with `gh release edit --notes-file`.
 - `go.mod`'s `go` line is set by `go get -u` to the newest dependency minimum.
   CI builds with Go 1.27 and `check-latest`.
 
+## CI tools
+
+`govulncheck` and `actionlint` are pinned in `tools/`, a separate Go module, so
+their versions are checksummed in `tools/go.sum` and don't enter runsd's own
+module graph. Run them from the repo root:
+
+```sh
+go tool -modfile=tools/go.mod govulncheck ./...
+go tool -modfile=tools/go.mod actionlint
+```
+
+Dependabot updates `tools/` with the `ci` prefix, so a tool bump never releases
+runsd. (`go -C tools ...` runs a command inside that module.)
+
 ## Dependabot
 
 - Cooldown is 7 days (14 for major) on `gomod`. `github-actions` takes only

@@ -16,6 +16,21 @@ updates:
         update-types:
           - minor
           - patch
+  # CI tools (govulncheck, actionlint) live in their own module, so bumping
+  # them does not change runsd and must not release it: `ci`, not `fix`.
+  - package-ecosystem: gomod
+    directory: /tools
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    commit-message:
+      prefix: ci
+    groups:
+      tools:
+        patterns:
+          - "*"
   - package-ecosystem: github-actions
     directory: /
     schedule:

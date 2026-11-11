@@ -58,7 +58,7 @@ jobs:
           go-version: "1.27"
           check-latest: true
       - name: Govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+        run: go tool -modfile=tools/go.mod govulncheck ./...
       # GoReleaser skips the step that loads --release-notes when
       # changelog.disable is true, which published v0.1.2 with an empty body.
       # A snapshot run skips that step too, so guard the config directly.

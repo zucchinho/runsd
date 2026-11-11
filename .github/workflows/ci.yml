@@ -37,7 +37,7 @@ jobs:
           go-version: "1.27"
           check-latest: true
       - name: Govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+        run: go tool -modfile=tools/go.mod govulncheck ./...
   lint:
     runs-on: ubuntu-24.04
     steps:
@@ -50,8 +50,10 @@ jobs:
         with:
           go-version: "1.27"
           check-latest: true
+      - name: Tools module
+        run: go -C tools mod tidy -diff && go -C tools mod verify
       - name: Actionlint
-        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+        run: go tool -modfile=tools/go.mod actionlint
       - name: GoReleaser config
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
