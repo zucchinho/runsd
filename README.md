@@ -90,14 +90,37 @@ your original entrypoint with it.
 For example:
 
 ```text
-ADD https://github.com/ahmetb/runsd/releases/download/<VERSION>/runsd /bin/runsd
+ADD --checksum=sha256:<SHA256> https://github.com/zucchinho/runsd/releases/download/<VERSION>/runsd /bin/runsd
 RUN chmod +x /bin/runsd
 ENTRYPOINT ["runsd", "--", "/app"]
 ```
 
 In the example above, change `<VERSION>` to a version number in the [Releases
-page](https://github.com/ahmetb/runsd). It is wise to pick a version and use it
-as long as you can until you hit a bug.
+page](https://github.com/zucchinho/runsd/releases). It is wise to pick a version
+and use it as long as you can until you hit a bug.
+
+Replace `<SHA256>` with the digest listed in `checksums.txt` on the same
+release. `ADD --checksum` fails the build if the downloaded binary does not
+match (it needs BuildKit, the default builder in current Docker).
+
+### Verifying a release
+
+Each release publishes a `checksums.txt` and a signed build provenance
+attestation. To check a binary by hand:
+
+```sh
+VERSION=<VERSION>
+BASE=https://github.com/zucchinho/runsd/releases/download/$VERSION
+curl -fsSLO $BASE/runsd
+curl -fsSLO $BASE/checksums.txt
+sha256sum -c checksums.txt          # on macOS: shasum -a 256 -c checksums.txt
+
+# confirm it was built by this repository's release workflow
+gh attestation verify runsd --repo zucchinho/runsd
+```
+
+Releases before the first one with a `checksums.txt` (up to `v0.1.1`) have no
+checksum or attestation.
 
 After installing `runsd`, it will have no effect while running locally. However,
 while on Cloud Run, you can now query other services by name over `http://`.
