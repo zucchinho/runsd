@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"slices"
 	"sort"
 	"testing"
 
@@ -104,8 +105,9 @@ func TestDNSExternalRecursion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if diff := cmp.Diff([]string{ipv4Loopback.String()}, v); diff != "" {
-		t.Fatalf("got different RRs: %s", diff)
+	// localtest.me also returns ::1 now, so only require the IPv4 loopback.
+	if !slices.Contains(v, ipv4Loopback.String()) {
+		t.Fatalf("want %s in RRs, got %v", ipv4Loopback, v)
 	}
 
 	// resolve a NS
