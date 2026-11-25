@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/google/go-cmp v0.7.0
 	github.com/miekg/dns v1.1.73
-	golang.org/x/net v0.62.0
+	golang.org/x/net v0.63.0
 	k8s.io/klog/v2 v2.140.0
 )
 
